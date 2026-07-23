@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --color-hp-offwhite: #F9F9F9;
+  --color-hp-charcoal: #1A1A1A;
+  --color-hp-orange: #FF7000;
+  --color-hp-orange-dark: #E66500;
+  --font-cairo: "Cairo", sans-serif;
+}
+
+@layer base {
+  html, body {
+    @apply overflow-x-hidden w-full;
+  }
+  body {
+    @apply bg-hp-offwhite text-hp-charcoal font-cairo;
+    direction: rtl;
+  }
+}
+
+@layer components {
+  .btn-orange {
+    @apply bg-hp-orange text-white px-6 py-2 rounded-md transition-all duration-300 hover:bg-hp-orange-dark active:scale-95;
+  }
+  
+  .btn-orange-outline {
+    @apply border-2 border-hp-orange text-hp-orange px-6 py-2 rounded-md transition-all duration-300 hover:bg-hp-orange hover:text-white active:scale-95;
+  }
+
+  .nav-link {
+    @apply text-hp-charcoal hover:text-hp-orange transition-colors duration-200 relative;
+  }
+
+  .nav-link::after {
+    content: '';
+    @apply absolute bottom-0 right-0 w-0 h-0.5 bg-hp-orange transition-all duration-300;
+  }
+
+  .nav-link:hover::after {
+    @apply w-full;
+  }
+}
+
+/* Custom transitions */
+.page-transition {
+  @apply transition-opacity duration-500 ease-in-out;
+}
