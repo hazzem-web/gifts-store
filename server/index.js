@@ -2,9 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import mysql from 'mysql2/promise';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
@@ -18,17 +16,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'halloween_party_secret_key_2026';
+const PORT = process.env.PORT
+const JWT_SECRET = process.env.JWT_SECRET
+const MONGODB_URI = process.env.MONGODB_URI;
+const AdminPassword = process.env.ADMIN_PASSWORD;
+const AdminUser = process.env.ADMIN_USER;
 
-// MySQL Configuration from .env
-const DB_HOST = process.env.DB_HOST || 'localhost';
-const DB_PORT = parseInt(process.env.DB_PORT || '3306');
-const DB_USER = process.env.DB_USER || 'root';
-const DB_PASSWORD = process.env.DB_PASSWORD || '';
-const DB_NAME = process.env.DB_NAME || 'halloween_party';
-
-// Create uploads directory
+// Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -52,203 +46,136 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
     else cb(new Error('يرجى رفع صور فقط!'), false);
   }
 });
 
-// Database Driver Wrapper (Supports MySQL with automatic SQLite fallback)
-let activeDriver = 'none'; // 'mysql' or 'sqlite'
-let mysqlPool = null;
-let sqliteDb = null;
-
-async function dbQuery(sql, params = []) {
-  if (activeDriver === 'mysql') {
-    const [rows] = await mysqlPool.query(sql, params);
-    return rows;
-  } else {
-    // SQLite
-    return await sqliteDb.all(sql, params);
-  }
+// Helper to check valid MongoDB ObjectId
+function isValidObjectId(id) {
+  return id && mongoose.Types.ObjectId.isValid(id);
 }
 
-async function dbExecute(sql, params = []) {
-  if (activeDriver === 'mysql') {
-    const [result] = await mysqlPool.query(sql, params);
-    return { insertId: result.insertId, affectedRows: result.affectedRows };
-  } else {
-    // SQLite
-    const result = await sqliteDb.run(sql, params);
-    return { insertId: result.lastID, affectedRows: result.changes };
-  }
-}
+// ==================== MONGOOSE SCHEMAS & MODELS ====================
+
+// User Schema
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true }
+}, {
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+userSchema.virtual('id').get(function() {
+  return this._id.toHexString();
+});
+
+const User = mongoose.model('User', userSchema);
+
+// Product Schema
+const productSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  category: { type: String, required: true },
+  price: { type: Number, required: true },
+  stock: { type: Number, required: true, default: 10 },
+  description: { type: String, default: '' },
+  image: { type: String, default: '' }
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+productSchema.virtual('id').get(function() {
+  return this._id.toHexString();
+});
+
+const Product = mongoose.model('Product', productSchema);
+
+// Order Schema
+const orderSchema = new mongoose.Schema({
+  customer_name: { type: String, required: true },
+  customer_email: { type: String, default: '' },
+  customer_phone: { type: String, required: true },
+  customer_address: { type: String, default: '' },
+  shipping_method: { type: String, default: 'استلام من المحل' },
+  total_amount: { type: Number, required: true },
+  items: { type: mongoose.Schema.Types.Mixed, required: true },
+  status: { type: String, default: 'قيد الانتظار' },
+  created_at: { type: Date, default: Date.now }
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+orderSchema.virtual('id').get(function() {
+  return this._id.toHexString();
+});
+
+const Order = mongoose.model('Order', orderSchema);
+
+// ==================== DATABASE INITIALIZATION ====================
 
 async function initDB() {
-  let mysqlConnected = false;
-
-  // Try connecting to MySQL first
   try {
-    const tempConn = await mysql.createConnection({
-      host: DB_HOST,
-      port: DB_PORT,
-      user: DB_USER,
-      password: DB_PASSWORD
-    });
-    await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-    await tempConn.end();
+    await mongoose.connect(MONGODB_URI);
+    console.log(`🍃 Connected to MongoDB Database via Mongoose successfully! (${MONGODB_URI})`);
 
-    mysqlPool = mysql.createPool({
-      host: DB_HOST,
-      port: DB_PORT,
-      user: DB_USER,
-      password: DB_PASSWORD,
-      database: DB_NAME,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0
-    });
-
-    // Test connection
-    await mysqlPool.query('SELECT 1');
-    activeDriver = 'mysql';
-    mysqlConnected = true;
-    console.log(`✅ Connected to MySQL Database '${DB_NAME}' successfully!`);
-  } catch (err) {
-    console.warn(`⚠️ MySQL Connection Failed (${err.message}). Falling back to SQLite...`);
-  }
-
-  // Fallback to SQLite if MySQL fails
-  if (!mysqlConnected) {
-    sqliteDb = await open({
-      filename: path.join(__dirname, 'database.sqlite'),
-      driver: sqlite3.Database
-    });
-    activeDriver = 'sqlite';
-    console.log('✅ Connected to SQLite Database fallback successfully!');
-  }
-
-  // Create Tables (Compatible DDL for both)
-  if (activeDriver === 'mysql') {
-    await mysqlPool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    `);
-    await mysqlPool.query(`
-      CREATE TABLE IF NOT EXISTS products (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        category VARCHAR(255) NOT NULL,
-        price DECIMAL(10, 2) NOT NULL,
-        stock INT NOT NULL DEFAULT 10,
-        description TEXT,
-        image TEXT
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    `);
-    await mysqlPool.query(`
-      CREATE TABLE IF NOT EXISTS orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        customer_name VARCHAR(255) NOT NULL,
-        customer_email VARCHAR(255),
-        customer_phone VARCHAR(255) NOT NULL,
-        customer_address TEXT,
-        shipping_method VARCHAR(255),
-        total_amount DECIMAL(10, 2) NOT NULL,
-        items JSON NOT NULL,
-        status VARCHAR(50) DEFAULT 'قيد الانتظار',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    `);
-  } else {
-    // SQLite DDL
-    await sqliteDb.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        price REAL NOT NULL,
-        stock INTEGER NOT NULL DEFAULT 10,
-        description TEXT,
-        image TEXT
-      );
-      CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        customer_name TEXT NOT NULL,
-        customer_email TEXT,
-        customer_phone TEXT NOT NULL,
-        customer_address TEXT,
-        shipping_method TEXT,
-        total_amount REAL NOT NULL,
-        items TEXT NOT NULL,
-        status TEXT DEFAULT 'قيد الانتظار',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-  }
-
-  // Seed Admin User
-  const adminUsers = await dbQuery('SELECT * FROM users WHERE username = ?', ['admin']);
-  if (adminUsers.length === 0) {
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-    await dbExecute('INSERT INTO users (username, password) VALUES (?, ?)', ['admin', hashedPassword]);
-    console.log(`✅ Default Admin created (${activeDriver}): username=admin, password=admin123`);
-  }
-
-  // Seed Initial Products
-  const productCountRows = await dbQuery('SELECT COUNT(*) as count FROM products');
-  const count = productCountRows[0] ? (productCountRows[0].count || productCountRows[0]['COUNT(*)']) : 0;
-  if (count === 0) {
-    const initialProducts = [
-      {
-        name: "تجهيز حفلة عيد ميلاد",
-        category: "عيد ميلاد",
-        price: 1500,
-        stock: 10,
-        image: "https://images.unsplash.com/photo-1513151233558-d860c5398176?q=80&w=800&auto=format&fit=crop",
-        description: "تجهيزات كاملة لحفلات أعياد الميلاد تشمل البالونات والديكور المتناسق."
-      },
-      {
-        name: "هدية سبوع فاخرة",
-        category: "سبوع",
-        price: 450,
-        stock: 15,
-        image: "https://images.unsplash.com/photo-1519689680058-324335c77eba?q=80&w=800&auto=format&fit=crop",
-        description: "طقم هدايا فاخر وشامل للمولود الجديد بلمسة مميزة."
-      },
-      {
-        name: "باقة ورد جوري",
-        category: "ورد وهدايا",
-        price: 1200,
-        stock: 8,
-        image: "https://images.unsplash.com/photo-1561181286-d3fee7d55364?q=80&w=800&auto=format&fit=crop",
-        description: "باقة ورد طبيعي طازج بألوان جذابة لتناسب كافة المناسبات."
-      },
-      {
-        name: "تورتة عيد ميلاد مميزة",
-        category: "عيد ميلاد",
-        price: 300,
-        stock: 4,
-        image: "https://images.unsplash.com/photo-1535141192574-5d4897c12636?q=80&w=800&auto=format&fit=crop",
-        description: "تورتة مميزة بأشكال رقيقة ومذاق رائع."
-      }
-    ];
-
-    for (const p of initialProducts) {
-      await dbExecute(
-        'INSERT INTO products (name, category, price, stock, description, image) VALUES (?, ?, ?, ?, ?, ?)',
-        [p.name, p.category, p.price, p.stock, p.description, p.image]
-      );
+    // Seed Default Admin User
+    const adminUser = await User.findOne({ username: 'admin' });
+    if (!adminUser) {
+      const hashedPassword = await bcrypt.hash(AdminPassword, 10);
+      await User.create({ username:AdminUser, password: hashedPassword });
+      console.log('✅ Default Admin created in MongoDB: username=admin, password=admin123');
     }
-    console.log(`✅ Initial seed products inserted into ${activeDriver}`);
+
+    // Seed Default Products if empty
+    const productCount = await Product.countDocuments();
+    if (productCount === 0) {
+      const initialProducts = [
+        {
+          name: "تجهيز حفلة عيد ميلاد",
+          category: "عيد ميلاد",
+          price: 1500,
+          stock: 10,
+          image: "https://images.unsplash.com/photo-1513151233558-d860c5398176?q=80&w=800&auto=format&fit=crop",
+          description: "تجهيزات كاملة لحفلات أعياد الميلاد تشمل البالونات والديكور المتناسق."
+        },
+        {
+          name: "هدية سبوع فاخرة",
+          category: "سبوع",
+          price: 450,
+          stock: 15,
+          image: "https://images.unsplash.com/photo-1519689680058-324335c77eba?q=80&w=800&auto=format&fit=crop",
+          description: "طقم هدايا فاخر وشامل للمولود الجديد بلمسة مميزة."
+        },
+        {
+          name: "باقة ورد جوري",
+          category: "ورد وهدايا",
+          price: 1200,
+          stock: 8,
+          image: "https://images.unsplash.com/photo-1561181286-d3fee7d55364?q=80&w=800&auto=format&fit=crop",
+          description: "باقة ورد طبيعي طازج بألوان جذابة لتناسب كافة المناسبات."
+        },
+        {
+          name: "تورتة عيد ميلاد مميزة",
+          category: "عيد ميلاد",
+          price: 300,
+          stock: 4,
+          image: "https://images.unsplash.com/photo-1535141192574-5d4897c12636?q=80&w=800&auto=format&fit=crop",
+          description: "تورتة مميزة بأشكال رقيقة ومذاق رائع."
+        }
+      ];
+
+      await Product.insertMany(initialProducts);
+      console.log('✅ Initial seed products inserted into MongoDB');
+    }
+  } catch (err) {
+    console.error('❌ Failed to connect to MongoDB:', err.message);
   }
 }
 
@@ -268,19 +195,19 @@ const authenticateToken = (req, res, next) => {
 
 // ==================== AUTH & ADMIN ROUTES ====================
 
+// Admin Login
 app.post('/api/admin/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
 
-    const rows = await dbQuery('SELECT * FROM users WHERE username = ?', [username]);
-    if (rows.length === 0) return res.status(400).json({ error: 'بيانات الدخول غير صحيحة' });
+    const user = await User.findOne({ username });
+    if (!user) return res.status(400).json({ error: 'بيانات الدخول غير صحيحة' });
 
-    const user = rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: 'بيانات الدخول غير صحيحة' });
 
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username });
   } catch (err) {
     console.error('Login error:', err);
@@ -288,15 +215,18 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+// Admin Dashboard Stats
 app.get('/api/admin/stats', authenticateToken, async (req, res) => {
   try {
-    const totalProductsRows = await dbQuery('SELECT COUNT(*) as count FROM products');
-    const totalSalesRows = await dbQuery("SELECT SUM(total_amount) as total FROM orders WHERE status != 'إلغاء'");
-    const stockOutsRows = await dbQuery('SELECT COUNT(*) as count FROM products WHERE stock <= 5');
+    const totalProducts = await Product.countDocuments();
+    const stockOuts = await Product.countDocuments({ stock: { $lte: 5 } });
 
-    const totalProducts = totalProductsRows[0] ? (totalProductsRows[0].count || totalProductsRows[0]['COUNT(*)']) : 0;
-    const totalSales = totalSalesRows[0] && totalSalesRows[0].total ? parseFloat(totalSalesRows[0].total) : 0;
-    const stockOuts = stockOutsRows[0] ? (stockOutsRows[0].count || stockOutsRows[0]['COUNT(*)']) : 0;
+    const salesAggregate = await Order.aggregate([
+      { $match: { status: { $ne: 'إلغاء' } } },
+      { $group: { _id: null, total: { $sum: '$total_amount' } } }
+    ]);
+
+    const totalSales = salesAggregate.length > 0 ? salesAggregate[0].total : 0;
 
     res.json({ totalProducts, totalSales, stockOuts });
   } catch (err) {
@@ -305,36 +235,42 @@ app.get('/api/admin/stats', authenticateToken, async (req, res) => {
   }
 });
 
+// Admin Settings
 app.put('/api/admin/settings', authenticateToken, async (req, res) => {
   try {
     const { username, oldPassword, newPassword } = req.body;
     const adminId = req.user.id;
 
-    const rows = await dbQuery('SELECT * FROM users WHERE id = ?', [adminId]);
-    if (rows.length === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
+    if (!isValidObjectId(adminId)) return res.status(400).json({ error: 'معرف غير صالح' });
 
-    const user = rows[0];
+    const user = await User.findById(adminId);
+    if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+
     const isMatch = await bcrypt.compare(oldPassword, user.password);
     if (!isMatch) return res.status(400).json({ error: 'كلمة المرور الحالية غير صحيحة' });
 
-    let finalPassword = user.password;
+    user.username = username;
     if (newPassword && newPassword.trim() !== '') {
-      finalPassword = await bcrypt.hash(newPassword, 10);
+      user.password = await bcrypt.hash(newPassword, 10);
     }
 
-    await dbExecute('UPDATE users SET username = ?, password = ? WHERE id = ?', [username, finalPassword, adminId]);
+    await user.save();
     res.json({ message: 'تم تحديث البيانات بنجاح' });
   } catch (err) {
     console.error('Settings update error:', err);
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'اسم المستخدم هذا مستخدم بالفعل' });
+    }
     res.status(500).json({ error: 'فشل تحديث البيانات' });
   }
 });
 
-// ==================== PRODUCTS ROUTES ====================
+// ==================== PRODUCTS ROUTES (CRUD) ====================
 
+// Get All Products
 app.get('/api/products', async (req, res) => {
   try {
-    const products = await dbQuery('SELECT * FROM products ORDER BY id DESC');
+    const products = await Product.find().sort({ createdAt: -1 });
     res.json(products);
   } catch (err) {
     console.error('Fetch products error:', err);
@@ -342,67 +278,89 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
+// Get Single Product by ID
 app.get('/api/products/:id', async (req, res) => {
   try {
-    const rows = await dbQuery('SELECT * FROM products WHERE id = ?', [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'المنتج غير موجود' });
-    res.json(rows[0]);
+    const { id } = req.params;
+    let product = null;
+    if (isValidObjectId(id)) {
+      product = await Product.findById(id);
+    }
+    if (!product) return res.status(404).json({ error: 'المنتج غير موجود' });
+    res.json(product);
   } catch (err) {
     console.error('Fetch product error:', err);
     res.status(500).json({ error: 'فشل جلب تفاصيل المنتج' });
   }
 });
 
+// Create Product (Admin CRUD)
 app.post('/api/products', authenticateToken, upload.single('image'), async (req, res) => {
   try {
     const { name, category, price, stock, description } = req.body;
     let imagePath = req.body.image || '';
-    if (req.file) imagePath = `/uploads/${req.file.filename}`;
 
-    const result = await dbExecute(
-      'INSERT INTO products (name, category, price, stock, description, image) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, category, parseFloat(price), parseInt(stock), description || '', imagePath]
-    );
+    if (req.file) {
+      imagePath = `/uploads/${req.file.filename}`;
+    }
 
-    const rows = await dbQuery('SELECT * FROM products WHERE id = ?', [result.insertId]);
-    res.status(201).json(rows[0]);
+    const newProduct = await Product.create({
+      name,
+      category,
+      price: parseFloat(price),
+      stock: parseInt(stock),
+      description: description || '',
+      image: imagePath
+    });
+
+    res.status(201).json(newProduct);
   } catch (err) {
     console.error('Create product error:', err);
     res.status(500).json({ error: 'فشل إضافة المنتج' });
   }
 });
 
+// Update Product (Admin CRUD)
 app.put('/api/products/:id', authenticateToken, upload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, category, price, stock, description } = req.body;
 
-    const existingRows = await dbQuery('SELECT * FROM products WHERE id = ?', [id]);
-    if (existingRows.length === 0) return res.status(404).json({ error: 'المنتج غير موجود' });
+    if (!isValidObjectId(id)) return res.status(404).json({ error: 'المنتج غير موجود' });
 
-    const existingProduct = existingRows[0];
+    const existingProduct = await Product.findById(id);
+    if (!existingProduct) return res.status(404).json({ error: 'المنتج غير موجود' });
+
     let imagePath = existingProduct.image;
-    if (req.file) imagePath = `/uploads/${req.file.filename}`;
-    else if (req.body.image) imagePath = req.body.image;
+    if (req.file) {
+      imagePath = `/uploads/${req.file.filename}`;
+    } else if (req.body.image) {
+      imagePath = req.body.image;
+    }
 
-    await dbExecute(
-      'UPDATE products SET name = ?, category = ?, price = ?, stock = ?, description = ?, image = ? WHERE id = ?',
-      [name, category, parseFloat(price), parseInt(stock), description || '', imagePath, id]
-    );
+    existingProduct.name = name;
+    existingProduct.category = category;
+    existingProduct.price = parseFloat(price);
+    existingProduct.stock = parseInt(stock);
+    existingProduct.description = description || '';
+    existingProduct.image = imagePath;
 
-    const updatedRows = await dbQuery('SELECT * FROM products WHERE id = ?', [id]);
-    res.json(updatedRows[0]);
+    await existingProduct.save();
+    res.json(existingProduct);
   } catch (err) {
     console.error('Update product error:', err);
     res.status(500).json({ error: 'فشل تعديل المنتج' });
   }
 });
 
+// Delete Product (Admin CRUD)
 app.delete('/api/products/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await dbExecute('DELETE FROM products WHERE id = ?', [id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'المنتج غير موجود' });
+    if (!isValidObjectId(id)) return res.status(404).json({ error: 'المنتج غير موجود' });
+
+    const deletedProduct = await Product.findByIdAndDelete(id);
+    if (!deletedProduct) return res.status(404).json({ error: 'المنتج غير موجود' });
     res.json({ message: 'تم حذف المنتج بنجاح' });
   } catch (err) {
     console.error('Delete product error:', err);
@@ -412,6 +370,7 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
 
 // ==================== ORDERS ROUTES ====================
 
+// Create Order (Customer)
 app.post('/api/orders', async (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address, shipping_method, total_amount, items } = req.body;
@@ -420,38 +379,49 @@ app.post('/api/orders', async (req, res) => {
       return res.status(400).json({ error: 'يرجى استكمال بيانات الطلب' });
     }
 
-    const itemsJson = typeof items === 'string' ? items : JSON.stringify(items);
+    const newOrder = await Order.create({
+      customer_name,
+      customer_email: customer_email || '',
+      customer_phone,
+      customer_address: customer_address || '',
+      shipping_method: shipping_method || 'استلام من المحل',
+      total_amount: parseFloat(total_amount),
+      items,
+      status: 'قيد الانتظار'
+    });
 
-    const result = await dbExecute(
-      `INSERT INTO orders (customer_name, customer_email, customer_phone, customer_address, shipping_method, total_amount, items, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [customer_name, customer_email || '', customer_phone, customer_address || '', shipping_method || 'استلام من المحل', parseFloat(total_amount), itemsJson, 'قيد الانتظار']
-    );
-
+    // Safe Update Product Stock
     try {
       const parsedItems = typeof items === 'string' ? JSON.parse(items) : items;
       for (const item of parsedItems) {
-        if (item.id && item.quantity) {
-          const updateStockSql = activeDriver === 'mysql'
-            ? 'UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?'
-            : 'UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?';
-          await dbExecute(updateStockSql, [item.quantity, item.id]);
+        const targetId = item.id || item._id;
+        if (targetId && isValidObjectId(targetId)) {
+          await Product.findByIdAndUpdate(targetId, {
+            $inc: { stock: -item.quantity }
+          });
+        } else if (item.name) {
+          // Fallback: match by product name if item ID was numeric (from legacy SQLite cache)
+          await Product.findOneAndUpdate(
+            { name: item.name },
+            { $inc: { stock: -item.quantity } }
+          );
         }
       }
     } catch (parseErr) {
       console.error('Error updating stock after order:', parseErr);
     }
 
-    res.status(201).json({ id: result.insertId, message: 'تم إرسال الطلب بنجاح' });
+    res.status(201).json({ id: newOrder._id, message: 'تم إرسال الطلب بنجاح' });
   } catch (err) {
     console.error('Create order error:', err);
     res.status(500).json({ error: 'فشل إرسال الطلب' });
   }
 });
 
+// Get All Orders (Admin)
 app.get('/api/orders', authenticateToken, async (req, res) => {
   try {
-    const orders = await dbQuery('SELECT * FROM orders ORDER BY created_at DESC');
+    const orders = await Order.find().sort({ created_at: -1 });
     res.json(orders);
   } catch (err) {
     console.error('Fetch orders error:', err);
@@ -459,14 +429,17 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
+// Update Order Status (Admin)
 app.patch('/api/orders/:id/status', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    if (!status) return res.status(400).json({ error: 'الحالة الجديدة مطلوبة' });
 
-    const result = await dbExecute('UPDATE orders SET status = ? WHERE id = ?', [status, id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'الطلب غير موجود' });
+    if (!status) return res.status(400).json({ error: 'الحالة الجديدة مطلوبة' });
+    if (!isValidObjectId(id)) return res.status(404).json({ error: 'الطلب غير موجود' });
+
+    const order = await Order.findByIdAndUpdate(id, { status }, { new: true });
+    if (!order) return res.status(404).json({ error: 'الطلب غير موجود' });
 
     res.json({ message: 'تم تحديث حالة الطلب بنجاح' });
   } catch (err) {
@@ -475,11 +448,14 @@ app.patch('/api/orders/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
+// Delete Order (Admin)
 app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await dbExecute('DELETE FROM orders WHERE id = ?', [id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'الطلب غير موجود' });
+    if (!isValidObjectId(id)) return res.status(404).json({ error: 'الطلب غير موجود' });
+
+    const deletedOrder = await Order.findByIdAndDelete(id);
+    if (!deletedOrder) return res.status(404).json({ error: 'الطلب غير موجود' });
     res.json({ message: 'تم حذف الطلب بنجاح' });
   } catch (err) {
     console.error('Delete order error:', err);
@@ -490,8 +466,8 @@ app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
 // Start Server
 initDB().then(() => {
   app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT} (Active Driver: ${activeDriver.toUpperCase()})`);
+    console.log(`🚀 Server running on http://localhost:${PORT} with MongoDB & Mongoose`);
   });
 }).catch((err) => {
-  console.error('❌ Database Initialization Fatal Error:', err);
+  console.error('❌ Failed to initialize database:', err);
 });

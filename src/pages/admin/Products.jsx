@@ -69,8 +69,9 @@ const AdminProducts = () => {
       data.append('image', currentProduct.image);
     }
 
+    const productId = currentProduct ? (currentProduct.id || currentProduct._id) : null;
     const url = currentProduct 
-      ? `${import.meta.env.VITE_API_URL}/api/products/${currentProduct.id}`
+      ? `${import.meta.env.VITE_API_URL}/api/products/${productId}`
       : `${import.meta.env.VITE_API_URL}/api/products`;
     
     const method = currentProduct ? 'PUT' : 'POST';
@@ -87,9 +88,10 @@ const AdminProducts = () => {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (targetProduct) => {
+    const targetId = typeof targetProduct === 'object' ? (targetProduct.id || targetProduct._id) : targetProduct;
     if (window.confirm('هل أنت متأكد من حذف هذا المنتج؟')) {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/products/${id}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/products/${targetId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}` }
       });
