@@ -203,18 +203,26 @@ const AdminOrders = () => {
                   {expandedOrder === order.id && (
                     <tr>
                       <td colSpan={5} className="p-6 bg-black/30">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {items.map((item, idx) => (
-                            <div key={idx} className="bg-white/5 p-4 rounded-xl border border-white/10">
-                              <div className="font-bold text-white">{item.name}</div>
-                              <div className="text-sm text-gray-400 mt-1">
-                                الكمية: {item.quantity} × {item.price} ج.م
+                        <div className="space-y-4">
+                          <div className="bg-white/5 p-4 rounded-xl border border-white/10 text-right">
+                            <div className="text-sm text-gray-400">طريقة الاستلام</div>
+                            <div className="font-bold text-white">{order.shipping_method || 'استلام من المحل'}</div>
+                            <div className="text-sm text-gray-400 mt-2">العنوان</div>
+                            <div className="font-bold text-white">{order.customer_address || 'استلام من المحل'}</div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {items.map((item, idx) => (
+                              <div key={idx} className="bg-white/5 p-4 rounded-xl border border-white/10">
+                                <div className="font-bold text-white">{item.name}</div>
+                                <div className="text-sm text-gray-400 mt-1">
+                                  الكمية: {item.quantity} × {item.price} ج.م
+                                </div>
+                                <div className="text-orange-500 font-bold mt-2">
+                                  الإجمالي: {item.quantity * item.price} ج.م
+                                </div>
                               </div>
-                              <div className="text-orange-500 font-bold mt-2">
-                                الإجمالي: {item.quantity * item.price} ج.م
-                              </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -259,6 +267,12 @@ const AdminOrders = () => {
 
               {expandedOrder === order.id && (
                 <div className="space-y-3">
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/10 text-right">
+                    <div className="text-[10px] text-gray-400">طريقة الاستلام</div>
+                    <div className="font-bold text-white text-sm">{order.shipping_method || 'استلام من المحل'}</div>
+                    <div className="text-[10px] text-gray-400 mt-2">العنوان</div>
+                    <div className="font-bold text-white text-sm">{order.customer_address || 'استلام من المحل'}</div>
+                  </div>
                   {items.map((item, idx) => (
                     <div key={idx} className="bg-white/5 p-3 rounded-xl border border-white/10">
                       <div className="font-bold text-white text-sm">{item.name}</div>

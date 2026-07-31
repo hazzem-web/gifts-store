@@ -58,6 +58,32 @@ function isValidObjectId(id) {
   return id && mongoose.Types.ObjectId.isValid(id);
 }
 
+function normalizeShippingMethod(method = '') {
+  const normalized = String(method).trim().toLowerCase();
+  if (normalized === 'delivery' || normalized.includes('توصيل')) {
+    return 'التوصيل';
+  }
+  return 'استلام من المحل';
+}
+
+function getShippingCost(shippingMethod, customerAddress = '') {
+  const normalizedMethod = normalizeShippingMethod(shippingMethod);
+
+  if (normalizedMethod === 'استلام من المحل') {
+    return 0;
+  }
+
+  const addressText = String(customerAddress || '').toLowerCase();
+  const isCairo = addressText.includes('القاهرة') || addressText.includes('cairo');
+  const isAlexandria = addressText.includes('الإسكندرية') || addressText.includes('الإسكندريه') || addressText.includes('alexandria') || addressText.includes('اسكندرية');
+
+  if (isCairo || isAlexandria) {
+    return 65;
+  }
+
+  return 120;
+}
+
 // ==================== MONGOOSE SCHEMAS & MODELS ====================
 
 // User Schema
@@ -102,6 +128,7 @@ const orderSchema = new mongoose.Schema({
   customer_phone: { type: String, required: true },
   customer_address: { type: String, default: '' },
   shipping_method: { type: String, default: 'استلام من المحل' },
+  shipping_cost: { type: Number, default: 0 },
   total_amount: { type: Number, required: true },
   items: { type: mongoose.Schema.Types.Mixed, required: true },
   status: { type: String, default: 'قيد الانتظار' },
@@ -373,10 +400,23 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
 // Create Order (Customer)
 app.post('/api/orders', async (req, res) => {
   try {
-    const { customer_name, customer_email, customer_phone, customer_address, shipping_method, total_amount, items } = req.body;
+    const { customer_name, customer_email, customer_phone, customer_address, shipping_method, items } = req.body;
 
-    if (!customer_name || !customer_phone || !total_amount || !items) {
+    if (!customer_name || !customer_phone || !items) {
       return res.status(400).json({ error: 'يرجى استكمال بيانات الطلب' });
+    }
+
+    const parsedItems = typeof items === 'string' ? JSON.parse(items) : items;
+    const itemSubtotal = Array.isArray(parsedItems)
+      ? parsedItems.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0)
+      : 0;
+
+    const normalizedShippingMethod = normalizeShippingMethod(shipping_method);
+    const shippingCost = getShippingCost(normalizedShippingMethod, customer_address);
+    const correctedTotalAmount = itemSubtotal + shippingCost;
+
+    if (normalizedShippingMethod === 'التوصيل' && (!customer_address || customer_address === 'استلام من المحل')) {
+      return res.status(400).json({ error: 'يرجى إدخال عنوان التوصيل بالتفصيل' });
     }
 
     const newOrder = await Order.create({
@@ -384,15 +424,15 @@ app.post('/api/orders', async (req, res) => {
       customer_email: customer_email || '',
       customer_phone,
       customer_address: customer_address || '',
-      shipping_method: shipping_method || 'استلام من المحل',
-      total_amount: parseFloat(total_amount),
+      shipping_method: normalizedShippingMethod,
+      shipping_cost: shippingCost,
+      total_amount: correctedTotalAmount,
       items,
       status: 'قيد الانتظار'
     });
 
     // Safe Update Product Stock
     try {
-      const parsedItems = typeof items === 'string' ? JSON.parse(items) : items;
       for (const item of parsedItems) {
         const targetId = item.id || item._id;
         if (targetId && isValidObjectId(targetId)) {

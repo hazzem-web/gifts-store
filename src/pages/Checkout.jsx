@@ -3,19 +3,60 @@ import { useCart } from '../context/CartContext';
 import { CreditCard, Truck, User, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+const EGYPT_GOVERNORATES = [
+  'القاهرة',
+  'الإسكندرية',
+  'الجيزة',
+  'الدقهلية',
+  'الشرقية',
+  'الغربية',
+  'القليوبية',
+  'المنوفية',
+  'أسيوط',
+  'بني سويف',
+  'الفيوم',
+  'الأقصر',
+  'المنيا',
+  'أسوان',
+  'البحيرة',
+  'الإسماعيلية',
+  'دمياط',
+  'بورسعيد',
+  'كفر الشيخ',
+  'مطروح',
+  'شمال سيناء',
+  'جنوب سيناء',
+  'الوادي الجديد'
+];
+
+const getShippingCost = (shippingMethod, governorate) => {
+  if (shippingMethod === 'pickup') return 0;
+
+  if (!governorate) return 120;
+
+  const normalized = governorate.trim();
+  if (normalized === 'القاهرة' || normalized === 'الإسكندرية') return 65;
+  return 120;
+};
+
 const Checkout = () => {
   const { cartTotal, cartItems, clearCart } = useCart();
   const navigate = useNavigate();
-  const [shippingMethod, setShippingMethod] = useState('pickup'); // 'pickup' is the only option now
+  const [shippingMethod, setShippingMethod] = useState('pickup');
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
-    phone: ''
+    phone: '',
+    governorate: 'القاهرة',
+    city: '',
+    street: '',
+    building: '',
+    notes: ''
   });
   const [loading, setLoading] = useState(false);
 
-  const shippingCost = shippingMethod === 'pickup' ? 0 : 50;
+  const shippingCost = getShippingCost(shippingMethod, formData.governorate);
   const finalTotal = cartTotal + shippingCost;
 
   const handleInputChange = (e) => {
@@ -25,14 +66,27 @@ const Checkout = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (shippingMethod === 'delivery' && (!formData.governorate || !formData.city || !formData.street)) {
+      alert('يرجى إكمال بيانات العنوان للتوصيل');
+      return;
+    }
+
     setLoading(true);
+
+    const customerAddress = shippingMethod === 'delivery'
+      ? [formData.governorate, formData.city, formData.street, formData.building, formData.notes]
+          .filter(Boolean)
+          .join(' - ')
+      : 'استلام من المحل';
 
     const orderData = {
       customer_name: `${formData.firstName} ${formData.lastName}`,
       customer_email: formData.email,
       customer_phone: formData.phone,
-      customer_address: 'استلام من المحل',
-      shipping_method: 'استلام من المحل',
+      customer_address: customerAddress,
+      shipping_method: shippingMethod === 'delivery' ? 'التوصيل' : 'استلام من المحل',
+      shipping_cost: shippingCost,
       total_amount: finalTotal,
       items: JSON.stringify(cartItems.map(item => ({
         id: item.id,
@@ -49,12 +103,13 @@ const Checkout = () => {
         body: JSON.stringify(orderData)
       });
 
+      const responseData = await response.json().catch(() => ({}));
+
       if (response.ok) {
-        const data = await response.json();
         clearCart();
-        navigate(`/order-success?id=${data.id}`);
+        navigate(`/order-success?id=${responseData.id}`);
       } else {
-        alert('حدث خطأ أثناء إتمام الطلب');
+        alert(responseData.error || 'حدث خطأ أثناء إتمام الطلب');
       }
     } catch (error) {
       console.error('Error:', error);
@@ -108,6 +163,10 @@ const Checkout = () => {
                   <span className="text-gray-500">المجموع الفرعي</span>
                   <span className="font-bold">{cartTotal} ج.م</span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">الشحن</span>
+                  <span className="font-bold">{shippingCost} ج.م</span>
+                </div>
                 <div className="pt-4 border-t-2 border-hp-orange/20 flex justify-between items-center text-2xl font-black">
                   <span>الإجمالي</span>
                   <span className="text-hp-orange">{finalTotal} ج.م</span>
@@ -149,12 +208,74 @@ const Checkout = () => {
                 <h2 className="text-xl font-bold">طريقة الاستلام</h2>
               </div>
               <div className="space-y-4">
-                <div className="flex items-center p-4 border-2 border-hp-orange bg-hp-orange/5 rounded-2xl">
-                  <div className="flex-1">
+                <label className={`flex items-center p-4 border-2 rounded-2xl cursor-pointer transition-all ${shippingMethod === 'pickup' ? 'border-hp-orange bg-hp-orange/5' : 'border-gray-100 bg-white'}`}>
+                  <input
+                    type="radio"
+                    name="shippingMethod"
+                    value="pickup"
+                    checked={shippingMethod === 'pickup'}
+                    onChange={(e) => setShippingMethod(e.target.value)}
+                    className="ml-4 w-5 h-5 accent-hp-orange"
+                  />
+                  <div className="flex-1 text-right">
                     <span className="font-black block text-lg text-hp-charcoal">استلام من المحل</span>
                     <span className="text-sm text-gray-500">بدون مصاريف شحن (0 ج.م)</span>
                   </div>
-                </div>
+                </label>
+
+                <label className={`flex items-center p-4 border-2 rounded-2xl cursor-pointer transition-all ${shippingMethod === 'delivery' ? 'border-hp-orange bg-hp-orange/5' : 'border-gray-100 bg-white'}`}>
+                  <input
+                    type="radio"
+                    name="shippingMethod"
+                    value="delivery"
+                    checked={shippingMethod === 'delivery'}
+                    onChange={(e) => setShippingMethod(e.target.value)}
+                    className="ml-4 w-5 h-5 accent-hp-orange"
+                  />
+                  <div className="flex-1 text-right">
+                    <span className="font-black block text-lg text-hp-charcoal">التوصيل إلى المنزل</span>
+                    <span className="text-sm text-gray-500">القاهرة والإسكندرية 65 ج.م، وباقي المحافظات 120 ج.م</span>
+                  </div>
+                </label>
+
+                {shippingMethod === 'delivery' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 pt-2">
+                    <div>
+                      <label className="block text-sm mb-2 text-gray-600">المحافظة</label>
+                      <select
+                        name="governorate"
+                        required
+                        value={formData.governorate}
+                        onChange={handleInputChange}
+                        className="w-full p-3.5 bg-hp-offwhite border border-gray-200 rounded-xl focus:outline-none focus:border-hp-orange transition-all"
+                      >
+                        {EGYPT_GOVERNORATES.map((governorate) => (
+                          <option key={governorate} value={governorate}>{governorate}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm mb-2 text-gray-600">المدينة / المنطقة</label>
+                      <input type="text" name="city" required value={formData.city} onChange={handleInputChange} className="w-full p-3.5 bg-hp-offwhite border border-gray-200 rounded-xl focus:outline-none focus:border-hp-orange transition-all" placeholder="المدينة أو المنطقة" />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm mb-2 text-gray-600">الشارع / رقم المنزل</label>
+                      <input type="text" name="street" required value={formData.street} onChange={handleInputChange} className="w-full p-3.5 bg-hp-offwhite border border-gray-200 rounded-xl focus:outline-none focus:border-hp-orange transition-all" placeholder="الشارع، رقم المنزل، أو أي تفاصيل إضافية" />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm mb-2 text-gray-600">اسم المبنى / العمارة</label>
+                      <input type="text" name="building" value={formData.building} onChange={handleInputChange} className="w-full p-3.5 bg-hp-offwhite border border-gray-200 rounded-xl focus:outline-none focus:border-hp-orange transition-all" placeholder="اسم المبنى أو العمارة" />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm mb-2 text-gray-600">ملاحظات إضافية</label>
+                      <input type="text" name="notes" value={formData.notes} onChange={handleInputChange} className="w-full p-3.5 bg-hp-offwhite border border-gray-200 rounded-xl focus:outline-none focus:border-hp-orange transition-all" placeholder="أي ملاحظات للوصول" />
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
 
