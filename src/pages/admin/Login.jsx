@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User } from 'lucide-react';
+import { ArrowLeft, Lock, User } from 'lucide-react';
 
 const AdminLogin = () => {
   const [username, setUsername] = useState('');
@@ -55,6 +55,15 @@ const AdminLogin = () => {
         )}
 
         <form onSubmit={handleLogin} className="space-y-6">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="flex items-center justify-center gap-2 w-full bg-transparent border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 font-bold py-3 rounded-xl transition-all"
+          >
+            <ArrowLeft size={18} />
+            <span>العودة إلى الصفحة الرئيسية</span>
+          </button>
+
           <div>
             <label className="block text-gray-400 mb-2 mr-1">اسم المستخدم</label>
             <div className="relative">

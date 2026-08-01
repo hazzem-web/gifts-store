@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import nodemailer from 'nodemailer';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
@@ -21,6 +22,12 @@ const JWT_SECRET = process.env.JWT_SECRET
 const MONGODB_URI = process.env.MONGODB_URI;
 const AdminPassword = process.env.ADMIN_PASSWORD;
 const AdminUser = process.env.ADMIN_USER;
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const ORDER_NOTIFICATION_EMAIL = process.env.ORDER_NOTIFICATION_EMAIL || 'partyhalloween672@gmail.com';
+const ORDER_NOTIFICATION_NAME = process.env.ORDER_NOTIFICATION_NAME || 'Gifts Store';
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -56,32 +63,6 @@ const upload = multer({
 // Helper to check valid MongoDB ObjectId
 function isValidObjectId(id) {
   return id && mongoose.Types.ObjectId.isValid(id);
-}
-
-function normalizeShippingMethod(method = '') {
-  const normalized = String(method).trim().toLowerCase();
-  if (normalized === 'delivery' || normalized.includes('توصيل')) {
-    return 'التوصيل';
-  }
-  return 'استلام من المحل';
-}
-
-function getShippingCost(shippingMethod, customerAddress = '') {
-  const normalizedMethod = normalizeShippingMethod(shippingMethod);
-
-  if (normalizedMethod === 'استلام من المحل') {
-    return 0;
-  }
-
-  const addressText = String(customerAddress || '').toLowerCase();
-  const isCairo = addressText.includes('القاهرة') || addressText.includes('cairo');
-  const isAlexandria = addressText.includes('الإسكندرية') || addressText.includes('الإسكندريه') || addressText.includes('alexandria') || addressText.includes('اسكندرية');
-
-  if (isCairo || isAlexandria) {
-    return 65;
-  }
-
-  return 120;
 }
 
 // ==================== MONGOOSE SCHEMAS & MODELS ====================
@@ -430,6 +411,21 @@ app.post('/api/orders', async (req, res) => {
       items,
       status: 'قيد الانتظار'
     });
+
+    try {
+      await sendOrderNotificationEmail({
+        id: newOrder._id,
+        customer_name,
+        customer_email: customer_email || '',
+        customer_phone,
+        customer_address: customer_address || '',
+        shipping_method: shipping_method || 'استلام من المحل',
+        total_amount: parseFloat(total_amount),
+        items
+      });
+    } catch (emailErr) {
+      console.error('Order email notification failed:', emailErr);
+    }
 
     // Safe Update Product Stock
     try {
