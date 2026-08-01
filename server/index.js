@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import nodemailer from 'nodemailer';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
@@ -21,6 +22,12 @@ const JWT_SECRET = process.env.JWT_SECRET
 const MONGODB_URI = process.env.MONGODB_URI;
 const AdminPassword = process.env.ADMIN_PASSWORD;
 const AdminUser = process.env.ADMIN_USER;
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const ORDER_NOTIFICATION_EMAIL = process.env.ORDER_NOTIFICATION_EMAIL || 'partyhalloween672@gmail.com';
+const ORDER_NOTIFICATION_NAME = process.env.ORDER_NOTIFICATION_NAME || 'Gifts Store';
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -56,6 +63,108 @@ const upload = multer({
 // Helper to check valid MongoDB ObjectId
 function isValidObjectId(id) {
   return id && mongoose.Types.ObjectId.isValid(id);
+}
+
+function safeParseOrderItems(items) {
+  if (Array.isArray(items)) return items;
+  if (typeof items === 'string') {
+    try {
+      const parsed = JSON.parse(items);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function formatOrderItemsForEmail(items) {
+  const parsedItems = safeParseOrderItems(items);
+
+  if (parsedItems.length === 0) {
+    return '<tr><td colspan="4" style="padding: 12px; text-align: center; color: #666;">لا توجد عناصر في الطلب</td></tr>';
+  }
+
+  return parsedItems.map((item, index) => {
+    const itemName = item.name || `عنصر ${index + 1}`;
+    const itemQuantity = Number(item.quantity || 1);
+    const itemPrice = Number(item.price || 0);
+    const itemTotal = itemQuantity * itemPrice;
+
+    return `
+      <tr>
+        <td style="padding: 12px; border-bottom: 1px solid #eee;">${itemName}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${itemQuantity}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${itemPrice.toFixed(2)} ج.م</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${itemTotal.toFixed(2)} ج.م</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+const orderEmailTransporter = SMTP_HOST && SMTP_USER && SMTP_PASS
+  ? nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS
+      }
+    })
+  : null;
+
+if (!orderEmailTransporter) {
+  console.warn('⚠️ Order email notifications disabled: set SMTP_HOST, SMTP_USER, and SMTP_PASS in your environment to enable Nodemailer.');
+}
+
+async function sendOrderNotificationEmail(orderPayload) {
+  if (!orderEmailTransporter) return;
+
+  const customerAddress = orderPayload.customer_address || 'استلام من المحل';
+  const customerPhone = orderPayload.customer_phone || 'غير متوفر';
+  const itemRows = formatOrderItemsForEmail(orderPayload.items);
+  const customerEmail = orderPayload.customer_email || 'غير محدد';
+
+  await orderEmailTransporter.sendMail({
+    from: `${ORDER_NOTIFICATION_NAME} <${SMTP_USER}>`,
+    to: ORDER_NOTIFICATION_EMAIL,
+    subject: `طلب جديد من متجر الهدايا - #${String(orderPayload.id)}`,
+    html: `
+      <div dir="rtl" style="font-family: Arial, sans-serif; background: #f8f8f8; padding: 24px; color: #222;">
+        <div style="max-width: 760px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.06);">
+          <div style="background: #ff7a1a; color: #fff; padding: 20px 24px; font-size: 22px; font-weight: bold;">
+            طلب جديد في المتجر
+          </div>
+          <div style="padding: 24px;">
+            <p style="margin: 0 0 8px;"><strong>رقم الطلب:</strong> ${String(orderPayload.id)}</p>
+            <p style="margin: 0 0 8px;"><strong>اسم العميل:</strong> ${orderPayload.customer_name}</p>
+            <p style="margin: 0 0 8px;"><strong>البريد الإلكتروني:</strong> ${customerEmail}</p>
+            <p style="margin: 0 0 8px;"><strong>رقم الهاتف:</strong> ${customerPhone}</p>
+            <p style="margin: 0 0 8px;"><strong>العنوان:</strong> ${customerAddress}</p>
+            <p style="margin: 0 0 8px;"><strong>طريقة الشحن/الاستلام:</strong> ${orderPayload.shipping_method || 'استلام من المحل'}</p>
+            <p style="margin: 0 0 18px;"><strong>الإجمالي:</strong> ${Number(orderPayload.total_amount || 0).toFixed(2)} ج.م</p>
+
+            <table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+              <thead>
+                <tr style="background: #fff7f0;">
+                  <th style="padding: 12px; text-align: right; border-bottom: 1px solid #eee;">المنتج</th>
+                  <th style="padding: 12px; text-align: center; border-bottom: 1px solid #eee;">الكمية</th>
+                  <th style="padding: 12px; text-align: center; border-bottom: 1px solid #eee;">السعر</th>
+                  <th style="padding: 12px; text-align: center; border-bottom: 1px solid #eee;">الإجمالي</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemRows}
+              </tbody>
+            </table>
+
+            <p style="margin-top: 18px; color: #555; font-size: 14px;">تم إنشاء هذا الطلب تلقائيًا عبر نظام البريد الإلكتروني في المتجر.</p>
+          </div>
+        </div>
+      </div>
+    `
+  });
 }
 
 // ==================== MONGOOSE SCHEMAS & MODELS ====================
@@ -389,6 +498,21 @@ app.post('/api/orders', async (req, res) => {
       items,
       status: 'قيد الانتظار'
     });
+
+    try {
+      await sendOrderNotificationEmail({
+        id: newOrder._id,
+        customer_name,
+        customer_email: customer_email || '',
+        customer_phone,
+        customer_address: customer_address || '',
+        shipping_method: shipping_method || 'استلام من المحل',
+        total_amount: parseFloat(total_amount),
+        items
+      });
+    } catch (emailErr) {
+      console.error('Order email notification failed:', emailErr);
+    }
 
     // Safe Update Product Stock
     try {
