@@ -614,7 +614,13 @@ app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'فشل حذف الطلب' });
   }
 });
+const frontendPath = path.join(__dirname, "../frontend/dist");
 
+app.use(express.static(frontendPath));
+
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(frontendPath, "index.html"));
+});
 // Start Server
 initDB().then(() => {
   app.listen(PORT, () => {
