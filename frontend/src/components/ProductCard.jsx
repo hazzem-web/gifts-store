@@ -3,6 +3,7 @@ import { useCart } from '../context/CartContext';
 import { Heart, ShoppingCart, Minus, Plus, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
+import { imageUrl } from '../lib/api';
 
 const ProductCard = ({ product, viewMode = 'grid' }) => {
   const { addToCart, toggleFavorite, favorites, getItemQuantity } = useCart();
@@ -83,7 +84,7 @@ const ProductCard = ({ product, viewMode = 'grid' }) => {
       {/* Image Container */}
       <Link to={`/product/${product.id}`} className="relative aspect-square overflow-hidden block">
         <img 
-          src={product.image?.startsWith('http') ? product.image : `${import.meta.env.VITE_API_URL}${product.image}`} 
+          src={imageUrl(product.image)} 
           alt={product.name}
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
         />

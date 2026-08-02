@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Eye, CheckCircle, XCircle, Clock, Search, Trash2, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { apiUrl } from '../../lib/api';
 
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -13,7 +14,7 @@ const AdminOrders = () => {
 
   const fetchOrders = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/orders`, {
+      const response = await fetch(apiUrl('/api/orders'), {
         headers: { 'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}` }
       });
       const data = await response.json();
@@ -24,7 +25,7 @@ const AdminOrders = () => {
   };
 
   const updateStatus = async (id, status) => {
-    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/orders/${id}/status`, {
+    const response = await fetch(apiUrl(`/api/orders/${id}/status`), {
       method: 'PATCH',
       headers: { 
         'Content-Type': 'application/json',
@@ -38,7 +39,7 @@ const AdminOrders = () => {
   const deleteOrder = async (id) => {
     if (window.confirm('هل أنت متأكد من مسح هذا الطلب نهائياً؟')) {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/orders/${id}`, {
+        const response = await fetch(apiUrl(`/api/orders/${id}`), {
           method: 'DELETE',
           headers: { 
             'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}`,

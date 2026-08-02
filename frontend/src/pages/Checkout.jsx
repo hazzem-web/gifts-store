@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { CreditCard, Truck, User, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { apiUrl, imageUrl } from '../lib/api';
 
 const EGYPT_GOVERNORATES = [
   'القاهرة',
@@ -97,7 +98,7 @@ const Checkout = () => {
     };
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/orders`, {
+      const response = await fetch(apiUrl('/api/orders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
@@ -144,7 +145,7 @@ const Checkout = () => {
                     <div className="flex items-center space-x-3 space-x-reverse min-w-0">
                       <div className="w-16 h-16 bg-gray-50 rounded-xl overflow-hidden border border-gray-100 shrink-0">
                         <img 
-                          src={item.image?.startsWith('http') ? item.image : `${import.meta.env.VITE_API_URL}${item.image}`} 
+                          src={imageUrl(item.image)} 
                           className="w-full h-full object-cover" 
                           alt={item.name} 
                         />

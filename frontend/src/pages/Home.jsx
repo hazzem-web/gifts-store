@@ -4,12 +4,13 @@ import { motion } from 'framer-motion';
 import ProductCard from '../components/ProductCard';
 import TrustSection from '../components/TrustSection';
 import { ArrowLeft } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 const Home = () => {
   const [featuredProducts, setFeaturedProducts] = useState([]);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/api/products`)
+    fetch(apiUrl('/api/products'))
       .then(res => res.json())
       .then(data => setFeaturedProducts(data.slice(0, 4)))
       .catch(err => console.error(err));

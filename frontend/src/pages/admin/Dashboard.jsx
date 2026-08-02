@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Package, ShoppingCart, AlertTriangle, TrendingUp, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { apiUrl } from '../../lib/api';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -18,9 +19,9 @@ const AdminDashboard = () => {
       try {
         const token = sessionStorage.getItem('adminToken');
         const [statsRes, ordersRes, productsRes] = await Promise.all([
-          fetch(`${import.meta.env.VITE_API_URL}/api/admin/stats`, { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch(`${import.meta.env.VITE_API_URL}/api/orders`, { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch(`${import.meta.env.VITE_API_URL}/api/products`)
+          fetch(apiUrl('/api/admin/stats'), { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(apiUrl('/api/orders'), { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(apiUrl('/api/products'))
         ]);
 
         if (statsRes.ok && ordersRes.ok && productsRes.ok) {

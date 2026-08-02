@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Save, User, Lock, Key } from 'lucide-react';
+import { apiUrl } from '../../lib/api';
 
 const AdminSettings = () => {
   const [formData, setFormData] = useState({
@@ -54,7 +55,7 @@ const AdminSettings = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/settings`, {
+      const response = await fetch(apiUrl('/api/admin/settings'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
