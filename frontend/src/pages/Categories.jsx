@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Package } from 'lucide-react';
+import { apiUrl, imageUrl } from '../lib/api';
 
 const Categories = () => {
   const [products, setProducts] = useState([]);
@@ -21,7 +22,7 @@ const Categories = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/products`);
+      const response = await fetch(apiUrl('/api/products'));
       const data = await response.json();
       setProducts(data);
     } catch (err) {
@@ -60,7 +61,7 @@ const Categories = () => {
                 >
                   <Link to={`/products?category=${encodeURIComponent(cat)}`} className="block w-full h-full">
                     <img 
-                      src={coverImage.startsWith('http') ? coverImage : `${import.meta.env.VITE_API_URL}${coverImage}`} 
+                      src={imageUrl(coverImage)} 
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
                       alt={cat} 
                     />

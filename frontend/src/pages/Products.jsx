@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ProductCard from '../components/ProductCard';
 import { Filter, Grid, List, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { apiUrl } from '../lib/api';
 
 const Products = () => {
   const [products, setProducts] = useState([]);
@@ -33,7 +34,7 @@ const Products = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/products`);
+      const response = await fetch(apiUrl('/api/products'));
       const data = await response.json();
       setProducts(data);
       // Calculate max price from products

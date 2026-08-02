@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, X, Upload, Search, Filter } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { apiUrl, imageUrl } from '../../lib/api';
 
 const AdminProducts = () => {
   const location = useLocation();
@@ -31,7 +32,7 @@ const AdminProducts = () => {
   }, [initialFilter]);
 
   const fetchProducts = async () => {
-    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/products`);
+    const response = await fetch(apiUrl('/api/products'));
     const data = await response.json();
     setProducts(data);
   };
@@ -70,9 +71,9 @@ const AdminProducts = () => {
     }
 
     const productId = currentProduct ? (currentProduct.id || currentProduct._id) : null;
-    const url = currentProduct 
-      ? `${import.meta.env.VITE_API_URL}/api/products/${productId}`
-      : `${import.meta.env.VITE_API_URL}/api/products`;
+    const url = currentProduct
+      ? apiUrl(`/api/products/${productId}`)
+      : apiUrl('/api/products');
     
     const method = currentProduct ? 'PUT' : 'POST';
 
@@ -91,7 +92,7 @@ const AdminProducts = () => {
   const handleDelete = async (targetProduct) => {
     const targetId = typeof targetProduct === 'object' ? (targetProduct.id || targetProduct._id) : targetProduct;
     if (window.confirm('هل أنت متأكد من حذف هذا المنتج؟')) {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/products/${targetId}`, {
+      const response = await fetch(apiUrl(`/api/products/${targetId}`), {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}` }
       });
@@ -111,7 +112,7 @@ const AdminProducts = () => {
         image: null
       });
       setPreviewImage(product.image 
-        ? (product.image.startsWith('http') ? product.image : `${import.meta.env.VITE_API_URL}${product.image}`)
+        ? (imageUrl(product.image))
         : null
       );
     } else {

@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { ShoppingCart, Heart, ShieldCheck, CheckCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiUrl, imageUrl } from '../lib/api';
 
 const ProductDetails = () => {
   const { id } = useParams();
@@ -16,7 +17,7 @@ const ProductDetails = () => {
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/products`);
+        const response = await fetch(apiUrl('/api/products'));
         const data = await response.json();
         const found = data.find(p => p.id === parseInt(id));
         setProduct(found);
@@ -80,7 +81,7 @@ const ProductDetails = () => {
             onClick={() => setIsImageModalOpen(true)}
           >
             <img 
-              src={product.image?.startsWith('http') ? product.image : `${import.meta.env.VITE_API_URL}${product.image}`} 
+              src={imageUrl(product.image)} 
               className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
               alt={product.name}
             />
@@ -196,7 +197,7 @@ const ProductDetails = () => {
                 <X size={32} />
               </button>
               <img 
-                src={product.image?.startsWith('http') ? product.image : `${import.meta.env.VITE_API_URL}${product.image}`} 
+                src={imageUrl(product.image)} 
                 className="w-full h-full object-contain rounded-2xl shadow-2xl"
                 alt={product.name}
               />
