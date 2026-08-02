@@ -17,11 +17,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT
-const JWT_SECRET = process.env.JWT_SECRET
-const MONGODB_URI = process.env.MONGODB_URI;
-const AdminPassword = process.env.ADMIN_PASSWORD;
-const AdminUser = process.env.ADMIN_USER;
+const PORT = Number(process.env.PORT || 5000);
+const JWT_SECRET = process.env.JWT_SECRET || 'gifts-store-dev-secret';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/gifts-store';
+const AdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+const AdminUser = process.env.ADMIN_USER || 'admin';
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_USER = process.env.SMTP_USER;
@@ -65,6 +65,15 @@ function isValidObjectId(id) {
   return id && mongoose.Types.ObjectId.isValid(id);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function safeParseOrderItems(items) {
   if (Array.isArray(items)) return items;
   if (typeof items === 'string') {
@@ -86,7 +95,7 @@ function formatOrderItemsForEmail(items) {
   }
 
   return parsedItems.map((item, index) => {
-    const itemName = item.name || `عنصر ${index + 1}`;
+    const itemName = escapeHtml(item.name || `عنصر ${index + 1}`);
     const itemQuantity = Number(item.quantity || 1);
     const itemPrice = Number(item.price || 0);
     const itemTotal = itemQuantity * itemPrice;
@@ -121,15 +130,18 @@ if (!orderEmailTransporter) {
 async function sendOrderNotificationEmail(orderPayload) {
   if (!orderEmailTransporter) return;
 
-  const customerAddress = orderPayload.customer_address || 'استلام من المحل';
-  const customerPhone = orderPayload.customer_phone || 'غير متوفر';
+  const orderId = escapeHtml(String(orderPayload.id || ''));
+  const customerName = escapeHtml(orderPayload.customer_name || '');
+  const customerAddress = escapeHtml(orderPayload.customer_address || 'استلام من المحل');
+  const customerPhone = escapeHtml(orderPayload.customer_phone || 'غير متوفر');
   const itemRows = formatOrderItemsForEmail(orderPayload.items);
-  const customerEmail = orderPayload.customer_email || 'غير محدد';
+  const customerEmail = escapeHtml(orderPayload.customer_email || 'غير محدد');
+  const shippingMethod = escapeHtml(orderPayload.shipping_method || 'استلام من المحل');
 
   await orderEmailTransporter.sendMail({
-    from: `${ORDER_NOTIFICATION_NAME} <${SMTP_USER}>`,
+    from: `${escapeHtml(ORDER_NOTIFICATION_NAME)} <${SMTP_USER}>`,
     to: ORDER_NOTIFICATION_EMAIL,
-    subject: `طلب جديد من متجر الهدايا - #${String(orderPayload.id)}`,
+    subject: `طلب جديد من متجر الهدايا - #${orderId}`,
     html: `
       <div dir="rtl" style="font-family: Arial, sans-serif; background: #f8f8f8; padding: 24px; color: #222;">
         <div style="max-width: 760px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.06);">
@@ -137,12 +149,12 @@ async function sendOrderNotificationEmail(orderPayload) {
             طلب جديد في المتجر
           </div>
           <div style="padding: 24px;">
-            <p style="margin: 0 0 8px;"><strong>رقم الطلب:</strong> ${String(orderPayload.id)}</p>
-            <p style="margin: 0 0 8px;"><strong>اسم العميل:</strong> ${orderPayload.customer_name}</p>
+            <p style="margin: 0 0 8px;"><strong>رقم الطلب:</strong> ${orderId}</p>
+            <p style="margin: 0 0 8px;"><strong>اسم العميل:</strong> ${customerName}</p>
             <p style="margin: 0 0 8px;"><strong>البريد الإلكتروني:</strong> ${customerEmail}</p>
             <p style="margin: 0 0 8px;"><strong>رقم الهاتف:</strong> ${customerPhone}</p>
             <p style="margin: 0 0 8px;"><strong>العنوان:</strong> ${customerAddress}</p>
-            <p style="margin: 0 0 8px;"><strong>طريقة الشحن/الاستلام:</strong> ${orderPayload.shipping_method || 'استلام من المحل'}</p>
+            <p style="margin: 0 0 8px;"><strong>طريقة الشحن/الاستلام:</strong> ${shippingMethod}</p>
             <p style="margin: 0 0 18px;"><strong>الإجمالي:</strong> ${Number(orderPayload.total_amount || 0).toFixed(2)} ج.م</p>
 
             <table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
