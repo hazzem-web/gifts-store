@@ -618,11 +618,12 @@ const frontendPath = path.join(__dirname, "dist");
 
 app.use(express.static(frontendPath));
 
-app.get("*", (req, res) => {
+app.get("/{*splat}", (req, res) => {
   res.sendFile(
     path.join(frontendPath, "index.html"),
     (err) => {
       if (err) {
+        console.error(err);
         res.status(500).send("Frontend build not found");
       }
     }
