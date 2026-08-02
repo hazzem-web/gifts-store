@@ -18,10 +18,8 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
-console.log(PORT);
 const JWT_SECRET = process.env.JWT_SECRET || 'gifts-store-dev-secret';
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://hazzemjs_db_user:oPVCEAn7XooNRkH1@hazzem.puxlbec.mongodb.net/hallowenparty?appName=Hazzem'
-console.log(MONGODB_URI);
 const AdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 const AdminUser = process.env.ADMIN_USER || 'admin';
 const SMTP_HOST = process.env.SMTP_HOST;
@@ -614,20 +612,12 @@ app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'فشل حذف الطلب' });
   }
 });
-const frontendPath = path.join(__dirname, "dist");
 
+const frontendPath = path.join(__dirname, "dist");
 app.use(express.static(frontendPath));
 
-app.get("/{*splat}", (req, res) => {
-  res.sendFile(
-    path.join(frontendPath, "index.html"),
-    (err) => {
-      if (err) {
-        console.error(err);
-        res.status(500).send("Frontend build not found");
-      }
-    }
-  );
+app.get("/{*splat}", (req,res)=>{
+  res.sendFile(path.join(frontendPath,"index.html"));
 });
 // Start Server
 app.listen(PORT, "0.0.0.0", () => {
