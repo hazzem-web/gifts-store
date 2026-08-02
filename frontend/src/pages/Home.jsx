@@ -42,7 +42,7 @@ const Home = () => {
               اجعل حفلتك لا تُنسى
             </h1>
             <p className="text-lg md:text-2xl mb-8 md:mb-10 text-white/90 leading-relaxed px-4">
-              نقدم لك أرقى الهدايا وتجهيزات الحفلات التي تضفي لمسة من السحر على مناسباتك الخاصة.
+              نقدم لك أرقى الهدايا وتجهيزات الحفلات التي تضيف لمسة من السحر على مناسباتك الخاصة.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 md:gap-6 justify-center px-6 sm:px-0">
               <Link to="/products" className="btn-orange text-base md:text-lg px-8 md:px-12 py-3 md:py-4 flex items-center justify-center font-bold shadow-lg shadow-hp-orange/20">
