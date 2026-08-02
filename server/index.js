@@ -26,8 +26,8 @@ const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
-const ORDER_NOTIFICATION_EMAIL = process.env.ORDER_NOTIFICATION_EMAIL || 'partyhalloween672@gmail.com';
-const ORDER_NOTIFICATION_NAME = process.env.ORDER_NOTIFICATION_NAME || 'Gifts Store';
+const ORDER_NOTIFICATION_EMAIL = process.env.ORDER_NOTIFICATION_EMAIL
+const ORDER_NOTIFICATION_NAME = process.env.ORDER_NOTIFICATION_NAME
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
