@@ -614,18 +614,23 @@ app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'فشل حذف الطلب' });
   }
 });
-const frontendPath = path.join(__dirname, "../frontend/dist");
+const frontendPath = path.join(__dirname, "dist");
 
 app.use(express.static(frontendPath));
 
-app.get(/^(?!\/api).*/, (req, res) => {
-  res.sendFile(path.join(frontendPath, "index.html"));
+app.get("*", (req, res) => {
+  res.sendFile(
+    path.join(frontendPath, "index.html"),
+    (err) => {
+      if (err) {
+        res.status(500).send("Frontend build not found");
+      }
+    }
+  );
 });
 // Start Server
-initDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT} with MongoDB & Mongoose`);
-  });
-}).catch((err) => {
-  console.error('❌ Failed to initialize database:', err);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
+
+initDB();
