@@ -252,7 +252,6 @@ async function initDB() {
     if (!adminUser) {
       const hashedPassword = await bcrypt.hash(AdminPassword, 10);
       await User.create({ username:AdminUser, password: hashedPassword });
-      console.log('✅ Default Admin created in MongoDB: username=admin, password=admin123');
     }
 
     // Seed Default Products if empty
