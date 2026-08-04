@@ -11,17 +11,27 @@ import fs from 'fs';
 import nodemailer from 'nodemailer';
 import { fileURLToPath } from 'url';
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load .env from server folder first, then project root
+const envPaths = [
+  path.join(__dirname, '.env'),
+  path.join(__dirname, '..', '.env')
+];
+for (const envPath of envPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
+}
+
 const app = express();
-const PORT = Number(process.env.PORT);
+const PORT = Number(process.env.PORT) || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'gifts-store-dev-secret';
-const MONGODB_URI = process.env.MONGODB_URI
-const AdminPassword = process.env.ADMIN_PASSWORD;
-const AdminUser = process.env.ADMIN_USER;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/gifts-store';
+const AdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+const AdminUser = process.env.ADMIN_USER || 'admin';
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_USER = process.env.SMTP_USER;
@@ -64,6 +74,31 @@ const upload = multer({
 function isValidObjectId(id) {
   return id && mongoose.Types.ObjectId.isValid(id);
 }
+
+function normalizeShippingMethod(method) {
+  const value = String(method || '').trim();
+  if (value === 'التوصيل' || value === 'delivery') return 'التوصيل';
+  return 'استلام من المحل';
+}
+
+function getShippingCost(shippingMethod, address) {
+  if (shippingMethod !== 'التوصيل') return 0;
+
+  const addressText = String(address || '').trim();
+  if (!addressText || addressText === 'استلام من المحل') return 120;
+
+  const governorate = addressText.split(' - ')[0]?.trim();
+  if (governorate === 'القاهرة' || governorate === 'الإسكندرية') return 65;
+  return 120;
+}
+
+// Reject API requests when MongoDB is not connected
+const requireDB = (req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ error: 'قاعدة البيانات غير متصلة، يرجى المحاولة لاحقاً' });
+  }
+  next();
+};
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -243,15 +278,25 @@ const Order = mongoose.model('Order', orderSchema);
 // ==================== DATABASE INITIALIZATION ====================
 
 async function initDB() {
+  if (!MONGODB_URI) {
+    console.error('❌ MONGODB_URI is not set in environment variables');
+    return;
+  }
+
   try {
-    await mongoose.connect(MONGODB_URI);
-    console.log(`🍃 Connected to MongoDB Database via Mongoose successfully!`);
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000
+    });
+    console.log('🍃 Connected to MongoDB Database via Mongoose successfully!');
 
     // Seed Default Admin User
-    const adminUser = await User.findOne({ username: 'admin' });
+    const adminUsername = AdminUser || 'admin';
+    const adminUser = await User.findOne({ username: adminUsername });
     if (!adminUser) {
-      const hashedPassword = await bcrypt.hash(AdminPassword, 10);
-      await User.create({ username:AdminUser, password: hashedPassword });
+      const hashedPassword = await bcrypt.hash(AdminPassword || 'admin123', 10);
+      await User.create({ username: adminUsername, password: hashedPassword });
+      console.log(`✅ Default admin user created: ${adminUsername}`);
     }
 
     // Seed Default Products if empty
@@ -297,8 +342,17 @@ async function initDB() {
     }
   } catch (err) {
     console.error('❌ Failed to connect to MongoDB:', err.message);
+    console.error('   Check MONGODB_URI, Atlas IP whitelist, and network access.');
   }
 }
+
+// Health check (no DB required)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
 
 // Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -317,7 +371,7 @@ const authenticateToken = (req, res, next) => {
 // ==================== AUTH & ADMIN ROUTES ====================
 
 // Admin Login
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', requireDB, async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
@@ -389,7 +443,7 @@ app.put('/api/admin/settings', authenticateToken, async (req, res) => {
 // ==================== PRODUCTS ROUTES (CRUD) ====================
 
 // Get All Products
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', requireDB, async (req, res) => {
   try {
     const products = await Product.find().sort({ createdAt: -1 });
     res.json(products);
@@ -492,7 +546,7 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
 // ==================== ORDERS ROUTES ====================
 
 // Create Order (Customer)
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders', requireDB, async (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address, shipping_method, items } = req.body;
 
@@ -533,7 +587,7 @@ app.post('/api/orders', async (req, res) => {
         customer_phone,
         customer_address: customer_address || '',
         shipping_method: shipping_method || 'استلام من المحل',
-        total_amount: parseFloat(total_amount),
+        total_amount: correctedTotalAmount,
         items
       });
     } catch (emailErr) {
