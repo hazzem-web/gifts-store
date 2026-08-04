@@ -288,7 +288,7 @@ async function initDB() {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000
     });
-    console.log('🍃 Connected to MongoDB Database via Mongoose successfully!');
+    console.log(`🍃 Connected to MongoDB Database via Mongoose successfully! URI: ${MONGODB_URI}`);
 
     // Seed Default Admin User
     const adminUsername = AdminUser || 'admin';
